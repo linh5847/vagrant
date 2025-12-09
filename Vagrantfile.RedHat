@@ -1,0 +1,36 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+VAGRANTFILE_API_VERSION = "2"
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  config.vm.box = "generic/centos9s"
+  config.ssh.insert_key = false
+  config.vm.synced_folder ".", "/vagrant", :mount_options => ["dmode=755", "fmode=644"]
+
+  config.vm.provider :virtualbox do |v|
+    v.name = "kickstart1"
+    v.memory = 2048
+    v.cpus = 2
+    v.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+    v.customize ["modifyvm", :id, "--ioapic", "on"]
+  end
+
+  config.vm.hostname = "kickstart1"
+  #config.vm.network "public_network", type: "bridged"
+  #config.vm.network "public_network", bridge: "en0"
+  config.vm.network :private_network, ip: "192.168.56.55"
+
+  # Set the name of the VM. See: http://stackoverflow.com/a/17864388/100134
+  config.vm.define :kickstart1 do |kickstart1|
+  end
+
+  # Ansible provisioner.
+  config.vm.provision "ansible" do |ansible|
+    ansible.compatibility_mode = "2.0"
+    ansible.playbook = "playbook.yml"
+    ansible.inventory_path = "provisioning/inventory"
+    ansible.become = true
+  end
+
+end
