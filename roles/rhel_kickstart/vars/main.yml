@@ -1,0 +1,8 @@
+#SPDX-License-Identifier: MIT-0
+---
+# vars file for ubuntu_kickstart
+ubuntu_iso_file: "ubuntu"
+ubuntu_os_version: "2204"
+sim_signed_version: "shim-signed_1.51.4+15.8-0ubuntu1_amd64"
+grub_efi_signed_version: "grub-efi-amd64-signed_1.187.12+2.06-2ubuntu14.8_amd64"
+grub_common_version: "grub-common_2.06-2ubuntu7_amd64"

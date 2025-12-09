@@ -1,0 +1,1 @@
+Vagrant file and loop, as well as ansible inventory yaml files as a guidance only. Use it by modifying to suits your need.

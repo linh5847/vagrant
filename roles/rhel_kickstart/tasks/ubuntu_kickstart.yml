@@ -1,0 +1,273 @@
+---
+- name: Disable a Linux firewall
+  service:
+    name: ufw
+    state: stopped
+    enabled: false
+
+- name: check for /srv/tftp folder exists.
+  stat:
+    path: /srv/tftp
+  register: tftpdir
+
+- name: Create /srv/tftp directory if not existed.
+  file:
+    path: /srv/tftp
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  when: not tftpdir.stat.exists
+
+- name: Install Linux packages for Ubuntu kickstart.
+  apt:
+    name: [ "apache2", "nfs-kernel-server", "dnsmasq" ]
+    state: present
+    update_cache: yes
+    cache_valid_time: 0
+    autoremove: no
+    autoclean: no
+
+- name: Transfer dnsmasq.conf to target system to resolve conflict port 53 with systemd-resolve.
+  copy:
+    dest: /etc/dnsmasq.d/pxe.conf
+    src: files/ubuntu/pxe.conf
+    mode: "0644"
+    owner: root
+    group: root
+  notify: ubuntu_restart_dnsmasq
+
+- name: Check for "/srv/tftp/ubuntu/{{ ubuntu_os_version }}"
+  stat:
+    path: "/srv/tftp/ubuntu/{{ ubuntu_os_version }}"
+  register: ubuntudir
+
+- name: Creates iso temporary mount path.
+  file:
+    path: /mnt/linuxiso
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  when: not ubuntudir.stat.exists
+
+- name: Creates "/srv/tftp/ubuntu/{{ ubuntu_os_version }}" directory if not existed.
+  file:
+    path: "/srv/tftp/ubuntu/{{ ubuntu_os_version }}"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  when: not ubuntudir.stat.exists
+
+- name: Mount iso file to /mnt/linuxiso path.
+  mount:
+    path: /mnt/linuxiso
+    state: mounted
+    src: "/vagrant/ubuntu{{ ubuntu_os_version }}.iso"
+    fstype: iso9660
+    opts: loop
+    boot: False
+
+- name: Transfer the Ubuntu ISO contents to permanent directory.
+  ansible.builtin.command: cp -pr "/mnt/linuxiso/{{ item }}" "/srv/tftp/ubuntu/{{ ubuntu_os_version }}/{{ item }}"
+  loop:
+  - "boot/"
+  - "boot.catalog"
+  - "casper/"
+  - ".disk/"
+  - "dists/"
+  - "EFI/"
+  - "install/"
+  - "md5sum.txt"
+  - "pool/"
+  failed_when: false
+  changed_when: false
+
+- name: Transfer vmlinux and initrd files from iso mount to /srv/tftp folder.
+  ansible.builtin.command: cp -pr  "/mnt/linuxiso/casper/{{ item }}" "/srv/tftp/{{ item }}"
+  loop:
+  - "vmlinuz"
+  - "initrd"
+  failed_when: false
+  changed_when: false
+
+- name: Download signed shim binary.
+  get_url:
+    url: "http://launchpadlibrarian.net/723335313/{{ sim_signed_version }}.deb"
+    dest: "/tmp/{{ sim_signed_version }}.deb"
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Copy the signed shim binary into place.
+  ansible.builtin.shell: "dpkg-deb --fsys-tarfile /tmp/shim-signed*deb | tar x ./usr/lib/shim/shimx64.efi.signed.latest -O | sudo tee /srv/tftp/bootx64.efi >/dev/null"
+  failed_when: false
+  changed_when: false
+
+- name: Download grub-efi-amd64-signed binary.
+  get_url:
+    url: "http://launchpadlibrarian.net/784984516/{{ grub_efi_signed_version }}.deb"
+    dest: "/tmp/{{ grub_efi_signed_version }}.deb"
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Copy the signed GRUB binary into place.
+  ansible.builtin.shell: "dpkg-deb --fsys-tarfile /tmp/grub-efi-amd64-signed*deb | tar x ./usr/lib/grub/x86_64-efi-signed/grubnetx64.efi.signed -O | sudo tee /srv/tftp/grubx64.efi >/dev/null"
+  failed_when: false
+  changed_when: false
+
+- name: Download grub-common.
+  get_url:
+    url: "http://launchpadlibrarian.net/596864557/{{ grub_common_version }}.deb"
+    dest: "/tmp/{{ grub_common_version }}.deb"
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: GRUB also needs a font to be available over TFTP.
+  ansible.builtin.shell: "dpkg-deb --fsys-tarfile grub-common*deb | tar x ./usr/share/grub/unicode.pf2 -O | sudo tee /srv/tftp/unicode.pf2 >/dev/null"
+  failed_when: false
+  changed_when: false
+
+- name: Check for /srv/tftp/grub folder exists.
+  stat:
+    path: /srv/tftp/grub
+  register: grubdir
+
+- name: Creates /srv/tftp/grub directory if not existed.
+  file:
+    path: /srv/tftp/grub
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  when: not grubdir.stat.exists
+
+- name: Transfers grub.cfg to /srv/tftp/grub directory.
+  copy:
+    dest: /srv/tftp/grub/grub.cfg
+    src: files/ubuntu/grub.cfg
+    mode: "0644"
+    owner: root
+    group: root
+  when: grubdir.stat.exists
+
+- name: Download pxelinux.0 package.
+  get_url:
+    url: "http://archive.ubuntu.com/ubuntu/dists/focal/main/installer-amd64/current/legacy-images/netboot/pxelinux.0"
+    dest: /srv/tftp/pxelinux.0
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: Requires syslinux-common linux package for TFTP loader.
+  apt:
+    name: [ "syslinux-common" ]
+    state: present
+    update_cache: yes
+    cache_valid_time: 0
+    autoremove: no
+    autoclean: no
+
+- name: Transfers the ldlinux.c32 TFTP BootLoader to /srv/tftp directory.
+  ansible.builtin.command: cp -pr /usr/lib/syslinux/modules/bios/"{{ item }}" /srv/tftp/"{{ item }}"
+  failed_when: false
+  changed_when: false
+  loop:
+  - "ldlinux.c32"
+  - "vesamenu.c32"
+  - "menu.c32"
+  - "libutil.c32"
+  - "libcom.c32"
+
+- name: Transfers menu.msg ready for kickstart installation options.
+  copy:
+    dest: /srv/tftp/menu.msg
+    src: files/ubuntu/menu.msg
+    mode: "0644"
+    owner: root
+    group: root
+  when: tftpdir.stat.exists
+
+- name: Check for /var/www/html/ks folder exists.
+  stat:
+    path: /var/www/html/ks
+  register: ksdir
+
+- name: Creates /var/www/html/ks directory if not existed.
+  file:
+    path: /var/www/html/ks
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  when: not ksdir.stat.exists
+
+- name: Transfer kickstart file to /var/www/html/ks folder.
+  copy:
+    dest: /var/www/html/ks/ks_ubuntu2204.cfg
+    src: files/ubuntu/ks_ubuntu2204.cfg
+    mode: "0644"
+    owner: root
+    group: root
+
+- name: check for /srv/tftp/pxelinux.cfg folder exists.
+  stat:
+    path: /srv/tftp/pxelinux.cfg
+  register: pxelinux_cfg_dir
+
+- name: Creates /srv/tftp/pxelinux.cfg directory if not existed.
+  file:
+    path: /srv/tftp/pxelinux.cfg
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  when: not pxelinux_cfg_dir.stat.exists
+
+- name: Transfers the TFTP boot option config to /srv/tftp/pxelinux.cfg folder.
+  copy:
+    dest: /srv/tftp/pxelinux.cfg/default
+    src: files/ubuntu/default
+    mode: "0644"
+    owner: root
+    group: root
+
+# - name: Transfers the TFTP boot option config to /srv/tftp/pxelinux.cfg folder.
+#   template:
+#     src: "ubuntu/default.j2"
+#     dest: /srv/tftp/pxelinux.cfg/default
+#     mode: "0644"
+#     owner: root
+#     group: root
+
+- name: Transfers NFS exports file.
+  copy:
+    dest: /etc/exports
+    src: files/ubuntu/nfs_exportfs
+    mode: "0644"
+    owner: root
+    group: root
+  notify: ubuntu_restart_nfs
+
+- name: Creates symbolic link to vagrant folder.
+  file:
+    path: "/var/www/html/vagrant"
+    state: link
+    src: "/vagrant"
+    mode: "0755"
+    owner: root
+    group: root
+  notify: ubuntu_restart_dnsmasq
+
+- name: Creates symbolic link /srv/tftp folder.
+  file:
+    path: "/var/www/html/ubuntu"
+    state: link
+    src: "/srv/tftp/ubuntu"
+    mode: "0755"
+    owner: root
+    group: root
+  notify: ubuntu_restart_apache2

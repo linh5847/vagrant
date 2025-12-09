@@ -1,0 +1,207 @@
+---
+- name: Disable CentOS Firewalld.
+  service:
+    name: firewalld
+    state: stopped
+    enabled: false
+
+- name: Change SELinux to permissive.
+  lineinfile:
+    path: /etc/selinux/config
+    regexp: "^SELINUX="
+    state: present
+    line: "SELINUX=permissive"
+    mode: "0644"
+    owner: "root"
+    group: "root"
+
+- name: Enable SELinux
+  ansible.posix.selinux:
+    policy: targeted
+    state: disabled
+
+# Install TFTP Server.
+- name: Install TFTP Linux packages.
+  dnf:
+    name: [ "tftp-server" ]
+    state: present
+
+# Enable TFTP service.
+- name: Enable tftp service.
+  systemd:
+    name: tftp
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Install DHCP.
+  dnf:
+    name: [ "dhcp-server" ]
+    state: present
+
+# Configuring DHCP.
+- name: Transfering DHCPD config file.
+  copy:
+    dest: /etc/dhcp/dhcpd.conf
+    src: files/dhcpd.conf
+    mode: "0644"
+    owner: "root"
+    group: "root"
+
+- name: Startup DHCPD service.
+  service:
+    name: dhcpd
+    state: started
+    enabled: true
+
+# Install syslinux linux package.
+- name: Install syslinux.
+  dnf:
+    name: [ "syslinux" ]
+    state: present
+
+# Copy all pxelinux.0 from to /var/lib/tftpboot folder.
+- name: Run the script
+  command: cp -r /usr/share/syslinux/"{{ item }}" /var/lib/tftpboot/"{{ item }}"
+  failed_when: false
+  register: pxelinux
+  changed_when: false
+  loop:
+  - "pxelinux.0"
+  - "menu.c32"
+  - "vesamenu.c32"
+  - "ldlinux.c32"
+  - "libcom32.c32"
+  - "libutil.c32"
+
+- name: Check images folder exists.
+  stat:
+    path: "/var/lib/tftpboot/{{ iso_file }}{{ version }}"
+  register: imagedir
+
+# Create a temporary for iso mount.
+- name: Create an image directory.
+  file:
+    path: "/mnt/linuxiso"
+    state: directory
+    mode: "0755"
+    owner: "root"
+    group: "root"
+  when: not imagedir.stat.exists
+
+# Create an images folder.
+- name: Create an image directory.
+  file:
+    path: "/var/lib/tftpboot/{{ iso_file }}{{ version }}"
+    state: directory
+    mode: "0755"
+    owner: "root"
+    group: "root"
+  when: not imagedir.stat.exists
+
+# Mount ISO to images folder.
+- name: Mount ISO file.
+  ansible.builtin.command: mount -t iso9660 -o loop,ro /vagrant/"{{ iso_file }}{{ version}}.iso" /mnt/linuxiso
+  register: result
+  failed_when: false
+  changed_when: false
+  # Ansible failed check = https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_error_handling.html
+
+  # Copy all linux contents from iso mount point.
+- name: Transfer from iso mount to real directory.
+  ansible.builtin.command: cp -pr "/mnt/linuxiso/{{ item }}" /var/lib/tftpboot/"{{ iso_file }}{{ version }}/{{ item }}"
+  failed_when: false
+  changed_when: false
+  loop:
+  - "AppStream/"
+  - "BaseOS/"
+  - ".discinfo"
+  - "EFI/"
+  - "EULA"
+  - "extra_files.json"
+  - "images/"
+  - "isolinux/"
+  - "LICENSE"
+  - "media.repo"
+  - ".treeinfo"
+
+- name: Transfer boot.msg to linux target machine location.
+  copy:
+    dest: /var/lib/tftpboot/boot.msg
+    src: files/boot.msg
+    mode: "0644"
+    owner: "root"
+    group: "root"
+
+- name: Check pxelinux.cfg directory exists.
+  stat:
+    path: /var/lib/tftpboot/pxelinux.cfg
+  register: pxelinux_cfg
+
+- name: Create pxelinux.cfg if not existed.
+  file:
+    path: /var/lib/tftpboot/pxelinux.cfg
+    state: directory
+    mode: "0755"
+    owner: "root"
+    group: "root"
+  when: not pxelinux_cfg.stat.exists
+
+- name: Configure PXEBoot Menu.
+  copy:
+    dest: /var/lib/tftpboot/pxelinux.cfg/default
+    src: files/default
+    mode: "0644"
+    owner: "root"
+    group: "root"
+
+- name: Install kickstart Linux pykickstart packages.
+  dnf:
+    name: [ "python3-kickstart", "pykickstart" ]
+    state: present
+    install_weak_deps: True
+
+- name: Install and configure web server.
+  dnf:
+    name: [ "apr", "apr-util", "apr-util-bdb", "apr-util-openssl", "centos-logos-httpd", "httpd-core", "httpd-tools", "mailcap ", "httpd-filesystem", "mod_http2", "mod_lua ", "httpd" ]
+    state: present
+
+- name: Check ks directory exists.
+  stat:
+    path: /var/www/html/ks
+  register: ks
+
+- name: Create ks directory if not existed.
+  file:
+    path: /var/www/html/ks
+    state: directory
+    mode: "0755"
+    owner: "root"
+    group: "root"
+  when: not ks.stat.exists
+
+- name: Create a soft link
+  file:
+    path: "/var/www/html/{{ iso_file }}{{ version }}"
+    state: link
+    src: "/var/lib/tftpboot/{{ iso_file }}{{ version }}"
+    mode: "0755"
+    owner: "root"
+    group: "root"
+
+- name: Transfer kickstart file to Linux server.
+  copy:
+    #dest: "/var/lib/tftpboot/{{ kickstart_file }}{{ iso_file }}{{ version }}.conf"
+    dest: "/var/www/html/ks/{{ kickstart_file }}{{ iso_file }}{{ version }}.cfg"
+    src: "files/{{ kickstart_file }}{{ iso_file }}{{ version }}.cfg"
+    mode: "0644"
+    owner: "root"
+    group: "root"
+  notify:
+  - dhcp_restart
+
+- name: startup web server service.
+  service:
+    name: httpd
+    state: restarted
+    enabled: true

@@ -1,0 +1,22 @@
+default vesamenu.c32
+prompt 1
+timeout 60
+
+display boot.msg
+
+label 1
+  menu label ^Install CentOS Stream 9
+  menu default
+  kernel centos9/images/pxeboot/vmlinuz
+  append initrd=centos9/images/pxeboot/initrd.img inst.text inst.noverifyssl inst.repo=http://192.168.56.55/centos9 inst.ks=http://192.168.56.55/ks/ks_centos9.cfg nompath ip=dhcp #rd.debug rd.live.debug
+label 2
+  menu label Install CentOS 9 with ^basic video driver
+  kernel centos9/images/pxeboot/vmlinuz
+  append initrd=centos9/images/pxeboot/initrd.img ip=dhcp inst.xdriver=vesa nomodeset inst.repo=http://192.168.56.55/centos9
+label rescue
+  menu label ^Rescue installed system
+  kernel centos9/images/pxeboot/vmlinuz
+  append initrd=centos9/images/pxeboot/initrd.img rescue
+label local
+  menu label Boot from ^local drive
+  localboot 0xffff

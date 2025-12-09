@@ -1,0 +1,18 @@
+DEFAULT menu.c32
+MENU TITLE ULTIMATE PXE SERVER
+PROMPT 0 
+TIMEOUT 0
+
+MENU COLOR TABMSG  37;40  #ffffffff #00000000
+MENU COLOR TITLE   37;40  #ffffffff #00000000 
+MENU COLOR SEL      7     #ffffffff #00000000
+MENU COLOR UNSEL    37;40 #ffffffff #00000000
+MENU COLOR BORDER   37;40 #ffffffff #00000000
+
+LABEL Ubuntu Server 22.04 NFS
+  kernel ubuntu/2204/casper/vmlinuz
+  append nfsroot=192.168.56.55:/srv/tftp/ubuntu/2204 netboot=nfs ip=dhcp boot=casper initrd=ubuntu/2204/casper/initrd
+
+LABEL Ubuntu Server 22.04 ISO
+  kernel ubuntu/2204/casper/vmlinuz
+  append root=/dev/ram0 root=/dev/ram0 ramdisk_size=1500000 cloud-config-url=/dev/null ip=dhcp url=http://192.168.56.55/vagrant/ubuntu2204.iso initrd=ubuntu/2204/casper/initrd

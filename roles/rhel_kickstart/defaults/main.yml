@@ -1,0 +1,8 @@
+#SPDX-License-Identifier: MIT-0
+---
+# defaults file for rhel_kickstart
+iso_file: "centos"
+version: "9"
+kickstart_file: "ks_"
+    
+  

@@ -1,0 +1,7 @@
+DEFAULT install
+TIMEOUT 100
+
+LABEL install
+  KERNEL vmlinuz
+  INITRD initrd
+  APPEND root=/dev/ram0 ramdisk_size=1500000 cloud-config-url=/dev/null ip=dhcp url="http://192.168.56.55/vagrant/ubuntu{{ ubuntu_os_version}}.iso"

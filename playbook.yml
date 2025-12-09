@@ -1,0 +1,12 @@
+---
+- name: Install Jenkins Server and plugins.
+  hosts: kickstart
+  gather_facts: True
+  become: True
+  collections:
+  - community.general
+  - ansible.builtin
+
+  roles:
+    #- { role: rhel_centos_repo, tags: rhel_centos_repo }
+    - { role: rhel_kickstart, tags: rhel_kickstart }

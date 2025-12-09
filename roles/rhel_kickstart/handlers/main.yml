@@ -1,0 +1,33 @@
+#SPDX-License-Identifier: MIT-0
+---
+# handlers file for rhel_kickstart
+- name: dhcp_restart
+  service:
+    name: dhcpd
+    state: restarted
+    enabled: true
+
+- name: tftp_restart
+  service:
+    name: tftp
+    state: restarted
+    enabled: true
+
+
+- name: ubuntu_restart_apache2
+  service:
+    name: apache2
+    state: restarted
+    enabled: true
+
+- name: ubuntu_restart_dnsmasq
+  service:
+    name: dnsmasq
+    state: restarted
+    enabled: true
+
+- name: ubuntu_restart_nfs
+  service:
+    name: nfs-kernel-server
+    state: restarted
+    enabled: true
